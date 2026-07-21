@@ -1,0 +1,1006 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>tracku</title>
+<style>
+  /* ---------------------------------------------------------------
+     tracku — rimu's calm front door to Linear.
+     Vibe: hot pink field, bold black lowercase type, pixel cat,
+     chunky pill cards. today = black · tomorrow = plum · backlog = outline
+  ----------------------------------------------------------------*/
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --pink: #FF50DC;
+    --pink-soft: #ff9aec;
+    --ink: #211d20;
+    --plum: #7d4b72;
+    --on-dark-muted: rgba(255,255,255,.62);
+    --radius: 24px;
+  }
+  body {
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    background: var(--pink);
+    color: var(--ink);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  #app { max-width: 940px; margin: 0 auto; padding: 24px 18px 80px; min-height: 100vh; }
+
+  button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+  .btn {
+    border-radius: 999px; padding: 10px 18px; font-size: 14px; font-weight: 700;
+  }
+  .btn-primary { background: var(--pink); color: var(--ink); }
+  .btn-primary:hover { background: var(--pink-soft); }
+
+  /* ---- setup / connect screen ---- */
+  .setup { text-align: center; padding-top: 70px; }
+  .setup h1 { font-size: 46px; font-weight: 800; letter-spacing: -1px; margin-bottom: 4px; }
+  .setup p { font-weight: 500; margin-bottom: 8px; }
+  .setup .box {
+    max-width: 400px; margin: 28px auto 0; background: var(--ink); color: #fff;
+    border-radius: 28px; padding: 26px; text-align: left;
+  }
+  .setup label { font-size: 13px; font-weight: 600; color: var(--on-dark-muted); display: block; margin-bottom: 6px; }
+  .setup input, .setup select {
+    width: 100%; padding: 10px 14px; font: inherit; font-size: 14px; color: #fff;
+    border: none; border-radius: 999px; background: #383237; margin-bottom: 16px; outline: none;
+  }
+  .setup input::placeholder { color: rgba(255,255,255,.4); }
+  .setup .keynote { font-size: 11px; color: rgba(255,255,255,.45); margin: -8px 0 16px; line-height: 1.5; }
+  .setup .hint { margin-top: 16px; font-size: 12px; color: rgba(0,0,0,.5); }
+  .setup .alt { margin-top: 14px; text-align: center; }
+  .setup .alt button { font-size: 12px; color: var(--on-dark-muted); text-decoration: underline; }
+  .setup .alt button:hover { color: #fff; }
+
+  /* ---- loading ---- */
+  .loading { text-align: center; padding-top: 150px; }
+  .loading p { font-weight: 700; margin-top: 16px; }
+
+  /* ---- home ---- */
+  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 4px 2px 10px; }
+  .avatars { display: flex; gap: 5px; }
+  .top-actions { display: flex; gap: 16px; align-items: center; }
+  .settings-link { font-size: 13px; font-weight: 600; color: rgba(0,0,0,.5); }
+  .settings-link:hover { color: var(--ink); }
+
+  .greeting { text-align: center; padding: 14px 0 30px; }
+  .greeting h1 {
+    font-size: clamp(25px, 4.6vw, 38px); font-weight: 800;
+    letter-spacing: -0.8px; line-height: 1.12;
+  }
+  .greeting .tally { font-size: 13px; font-weight: 600; color: rgba(0,0,0,.55); margin-top: 12px; }
+  .cat { display: inline-block; margin-bottom: 14px; animation: bob 3.2s ease-in-out infinite; }
+  .cat.jump { animation: jump .6s ease; }
+  @keyframes bob { 0%,100%{ transform: translateY(0) } 50%{ transform: translateY(-7px) } }
+  @keyframes jump {
+    0% { transform: translateY(0) rotate(0deg); }
+    40% { transform: translateY(-30px) rotate(-7deg); }
+    70% { transform: translateY(4px) rotate(2deg); }
+    100% { transform: translateY(0) rotate(0deg); }
+  }
+
+  .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 680px){ .columns { grid-template-columns: 1fr; } }
+
+  .col-title { font-size: 16px; font-weight: 700; margin-bottom: 12px; text-align: center; }
+  .col-list { display: flex; flex-direction: column; gap: 12px; }
+
+  /* ---- backlog shelf ---- */
+  .backlog { margin-top: 34px; }
+  .backlog-head {
+    display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer;
+    font-size: 15px; font-weight: 700; margin-bottom: 12px;
+  }
+  .backlog-head .count { font-weight: 500; color: rgba(0,0,0,.5); }
+  .backlog-head .caret { transition: transform .15s; font-size: 12px; }
+  .backlog-head.collapsed .caret { transform: rotate(-90deg); }
+  .backlog-list { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 680px){ .backlog-list { grid-template-columns: 1fr; } }
+
+  /* ---- cards: chunky pills ---- */
+  .card {
+    border-radius: var(--radius); padding: 14px 16px; cursor: pointer;
+    transition: transform .12s ease;
+  }
+  .card:hover { transform: translateY(-2px); }
+  .card.b-today { background: var(--ink); color: #fff; }
+  .card.b-tomorrow { background: var(--plum); color: #fff; }
+  .card.b-backlog { background: transparent; border: 2px solid rgba(0,0,0,.55); color: var(--ink); }
+  .card.pending { opacity: .65; }
+  .card.popping { animation: pop .42s ease forwards; }
+  @keyframes pop {
+    0% { transform: scale(1); }
+    35% { transform: scale(1.05) rotate(1deg); }
+    100% { transform: scale(.85); opacity: 0; }
+  }
+
+  .card-top { display: flex; gap: 11px; align-items: flex-start; }
+  .card-title { font-size: 15px; font-weight: 600; }
+  .tick {
+    width: 21px; height: 21px; border-radius: 50%; border: 2px solid var(--pink);
+    flex-shrink: 0; margin-top: 1px; cursor: pointer; background: transparent;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 800; color: transparent; transition: background .1s;
+  }
+  .b-backlog .tick { border-color: var(--ink); }
+  .tick:hover { background: var(--pink); color: var(--ink); }
+  .b-backlog .tick:hover { background: var(--ink); color: var(--pink); }
+  .tick.ticked { background: var(--pink); color: var(--ink); border-color: var(--pink); }
+
+  .card-meta { display: flex; align-items: center; gap: 7px; margin: 10px 0 0 32px; flex-wrap: wrap; }
+  .dot { width: 8px; height: 8px; border-radius: 2px; }
+  .avatar {
+    width: 20px; height: 20px; border-radius: 50%; font-size: 10px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; color: #fff;
+  }
+  .chip {
+    font-size: 11px; font-weight: 600; color: rgba(255,255,255,.8);
+    background: rgba(255,255,255,.14); border-radius: 999px; padding: 2px 9px;
+  }
+  .b-backlog .chip { color: rgba(0,0,0,.6); background: rgba(0,0,0,.08); }
+  .paperclip { font-size: 11px; color: var(--on-dark-muted); }
+  .b-backlog .paperclip { color: rgba(0,0,0,.45); }
+  .moves { display: flex; gap: 2px; margin-left: auto; }
+  .card-move { font-size: 11px; font-weight: 600; color: rgba(255,255,255,.42); padding: 2px 6px; border-radius: 999px; }
+  .card-move:hover { color: var(--ink); background: var(--pink); }
+  .b-backlog .card-move { color: rgba(0,0,0,.42); }
+  .b-backlog .card-move:hover { color: #fff; background: var(--ink); }
+
+  .add-row {
+    border: 2px dashed rgba(0,0,0,.4); border-radius: var(--radius); padding: 11px 15px;
+    display: flex; align-items: center; gap: 9px;
+  }
+  .add-row input { flex: 1; border: none; background: none; font: inherit; font-size: 14px; font-weight: 500; outline: none; color: var(--ink); }
+  .add-row input::placeholder { color: rgba(0,0,0,.42); }
+  .add-plus { color: rgba(0,0,0,.5); font-size: 16px; font-weight: 700; }
+
+  .empty {
+    border: 2px dashed rgba(0,0,0,.3); border-radius: var(--radius); padding: 22px 14px;
+    text-align: center; color: rgba(0,0,0,.5); font-size: 13px; font-weight: 500;
+  }
+
+  /* ---- detail panel ---- */
+  .scrim {
+    position: fixed; inset: 0; background: rgba(46,3,35,.5); opacity: 0; pointer-events: none;
+    transition: opacity .18s; z-index: 20;
+  }
+  .scrim.open { opacity: 1; pointer-events: auto; }
+  .panel {
+    position: fixed; top: 0; right: 0; height: 100%; width: 410px; max-width: 92vw;
+    background: var(--ink); color: #fff; z-index: 21; border-radius: 28px 0 0 28px;
+    transform: translateX(100%); transition: transform .2s ease; overflow-y: auto; padding: 24px;
+  }
+  .panel.open { transform: translateX(0); }
+  .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .panel-id { font-size: 12px; color: var(--on-dark-muted); font-family: ui-monospace, monospace; }
+  .panel-close { color: var(--on-dark-muted); font-size: 22px; line-height: 1; }
+  .panel-close:hover { color: #fff; }
+  .panel-title { display: flex; gap: 11px; align-items: flex-start; margin-bottom: 16px; }
+  .panel-title .tick { width: 24px; height: 24px; margin-top: 3px; }
+  .panel-title h2 { font-size: 20px; font-weight: 700; letter-spacing: -.3px; }
+  .panel-desc {
+    font-size: 14px; color: rgba(255,255,255,.75); background: rgba(255,255,255,.08);
+    border-radius: 16px; padding: 13px 15px; margin-bottom: 16px; white-space: pre-wrap;
+  }
+  .prop { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; font-size: 13px; }
+  .prop + .prop { border-top: 1px solid rgba(255,255,255,.1); }
+  .prop .label { color: var(--on-dark-muted); font-weight: 600; }
+  .prop select, .prop input[type=date] {
+    font: inherit; font-size: 13px; font-weight: 600; border: none; border-radius: 999px;
+    padding: 5px 12px; background: #383237; color: #fff; outline: none;
+    color-scheme: dark;
+  }
+  .prop .chip { background: rgba(255,255,255,.14); color: rgba(255,255,255,.8); }
+  .new-project { display: flex; gap: 6px; align-items: center; }
+  .new-project-input {
+    font: inherit; font-size: 13px; font-weight: 600; border: none; border-radius: 999px;
+    padding: 5px 12px; background: #383237; color: #fff; outline: none; width: 170px;
+  }
+  .new-project-input::placeholder { color: rgba(255,255,255,.4); }
+  .mini-x { color: var(--on-dark-muted); font-size: 16px; line-height: 1; padding: 0 2px; }
+  .mini-x:hover { color: #fff; }
+
+  .outputs { margin-top: 18px; border-top: 1px solid rgba(255,255,255,.1); padding-top: 14px; }
+  .outputs h3, .comments h3 { font-size: 12px; color: var(--on-dark-muted); font-weight: 700; margin-bottom: 10px; letter-spacing: .3px; }
+  .attach {
+    display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 9px 12px;
+    background: rgba(255,255,255,.07); border-radius: 14px; margin-bottom: 8px;
+  }
+  .attach .kind { font-size: 11px; font-weight: 700; color: var(--ink); background: var(--pink); border-radius: 999px; padding: 1px 8px; }
+  .attach a { color: var(--pink-soft); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .attach-add input, .comment-add input {
+    flex: 1; border: 2px dashed rgba(255,255,255,.25); border-radius: 999px; padding: 8px 14px;
+    font: inherit; font-size: 13px; outline: none; background: none; color: #fff;
+  }
+  .attach-add input::placeholder, .comment-add input::placeholder { color: rgba(255,255,255,.4); }
+  .attach-add, .comment-add { display: flex; gap: 6px; }
+  .attach-note { font-size: 11px; color: rgba(255,255,255,.4); margin-top: 6px; }
+
+  .comments { margin-top: 18px; border-top: 1px solid rgba(255,255,255,.1); padding-top: 14px; }
+  .comment { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 10px; font-size: 13px; }
+  .comment .avatar { width: 20px; height: 20px; flex-shrink: 0; }
+  .comment-add { margin-top: 10px; }
+  .panel-done { width: 100%; margin-top: 22px; font-size: 15px; padding: 13px; }
+  .open-linear { font-size: 12px; color: var(--on-dark-muted); text-decoration: underline; }
+  .open-linear:hover { color: var(--pink-soft); }
+  .none-yet { font-size: 13px; color: rgba(255,255,255,.4); margin-bottom: 10px; }
+
+  /* ---- celebration ---- */
+  .cheer {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    z-index: 40; pointer-events: none; opacity: 0; transition: opacity .15s;
+  }
+  .cheer.show { opacity: 1; }
+  .cheer .bubble {
+    background: var(--ink); color: var(--pink); padding: 15px 26px; border-radius: 999px;
+    font-size: 17px; font-weight: 800; transform: scale(.8); transition: transform .2s;
+  }
+  .cheer.show .bubble { transform: scale(1); }
+
+  /* ---- toast (gentle error) ---- */
+  .toast {
+    position: fixed; bottom: 26px; left: 50%; z-index: 50; pointer-events: none;
+    transform: translateX(-50%) translateY(90px); opacity: 0;
+    background: var(--ink); color: #fff; padding: 11px 20px; border-radius: 999px;
+    font-size: 13px; font-weight: 600; transition: transform .22s ease, opacity .22s;
+    max-width: 88vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+  .hidden { display: none !important; }
+  .footnote { text-align: center; color: rgba(0,0,0,.45); font-size: 11px; font-weight: 500; margin-top: 34px; line-height: 1.7; }
+  .footnote button { text-decoration: underline; }
+</style>
+</head>
+<body>
+  <div id="app"></div>
+  <div class="scrim" id="scrim"></div>
+  <div class="panel" id="panel"></div>
+  <div class="cheer" id="cheer"><div class="bubble" id="cheerText">✦ nice, shipped it</div></div>
+  <div class="toast" id="toast"></div>
+
+<script>
+/* =====================================================================
+   tracku — Linear is the source of truth for issue content.
+   The local layer (buckets, backlog collapse, weekly tally) is the
+   vibe layer, keyed by Linear issue id. Linear never sees it.
+
+   Modes:
+   - "linear": real sync via Linear GraphQL (personal API key)
+   - "demo":   fake data, writes stay in the browser
+   ===================================================================== */
+
+/* ---------------- storage ---------------- */
+const CFG_KEY   = "tracku-linear"; // { key, teamId, teamName } — stays on this device
+const LOCAL_KEY = "tracku-local";  // vibe layer: { buckets, backlogOpen, week, shipped, mode }
+const DEMO_KEY  = "tracku-demo";   // demo-mode issue data
+
+// some embedded browsers disable localStorage entirely — fall back to
+// in-memory storage so tracku still works (it just forgets on refresh)
+const store = (() => {
+  try {
+    const ls = window.localStorage;
+    ls.setItem("__tracku_test","1"); ls.removeItem("__tracku_test");
+    return { getItem: k=>ls.getItem(k), setItem: (k,v)=>ls.setItem(k,v), removeItem: k=>ls.removeItem(k), memory: false };
+  } catch(e) {
+    const m = {};
+    return { getItem: k=>(k in m ? m[k] : null), setItem: (k,v)=>{ m[k]=String(v); }, removeItem: k=>{ delete m[k]; }, memory: true };
+  }
+})();
+
+function loadJSON(k, fallback){
+  try { const raw = store.getItem(k); return raw ? JSON.parse(raw) : fallback; }
+  catch(e){ return fallback; }
+}
+// Monday of the current week — the tally resets when this changes
+function weekKey(){
+  const d = new Date(); const day = (d.getDay()+6)%7;
+  d.setDate(d.getDate()-day);
+  return d.toISOString().slice(0,10);
+}
+
+let cfg = loadJSON(CFG_KEY, null);
+let local = loadJSON(LOCAL_KEY, { buckets: {}, backlogOpen: false, week: weekKey(), shipped: 0, mode: null });
+if(local.week !== weekKey()){ local.week = weekKey(); local.shipped = 0; }
+function saveLocal(){ store.setItem(LOCAL_KEY, JSON.stringify(local)); }
+
+/* ---------------- state ---------------- */
+let state = {
+  screen: "setup",       // setup | loading | home
+  mode: null,            // "linear" | "demo"
+  syncing: false,
+  selectedId: null,
+  setupTeams: null,      // teams list during setup step 2
+  setupKey: null,        // key being validated during setup
+  meId: null,
+  people: {},            // id -> { name, initial, color }
+  stateIds: {},          // "todo" | "in progress" | "done" -> Linear workflow state id
+  projects: [],          // [{ id, name }] for the team
+  newProjectFor: null,   // issue id currently typing a new project name for
+  issues: [],
+};
+
+const AVATAR_COLORS = ["#c0398f","#2f8f5b","#b8791a","#3b6fb8","#8a4bd1","#d1584b","#3f8f8a"];
+const PRIORITY_DOT = { urgent: "#ff5c5c", high: "#ffb03a", none: "transparent" };
+
+/* ---------------- Linear API ---------------- */
+const LINEAR_URL = "https://api.linear.app/graphql";
+async function gql(query, variables, keyOverride){
+  const res = await fetch(LINEAR_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: keyOverride || cfg.key },
+    body: JSON.stringify({ query, variables: variables || {} }),
+  });
+  const json = await res.json().catch(()=>({ errors:[{message:"bad response"}] }));
+  if(!res.ok || json.errors) throw new Error((json.errors && json.errors[0].message) || ("http " + res.status));
+  return json.data;
+}
+// fire-and-forget write: optimistic UI already applied; on failure, tell rimu and re-sync truth
+function linWrite(query, variables){
+  if(state.mode !== "linear") { saveDemo(); return; }
+  gql(query, variables).catch(e => { toast("couldn't reach linear — " + e.message); sync(); });
+}
+
+const SYNC_QUERY = `query($teamId: String!) {
+  viewer { id }
+  team(id: $teamId) {
+    states { nodes { id name type position } }
+    members { nodes { id displayName } }
+    projects(first: 100) { nodes { id name } }
+    issues(first: 100, orderBy: updatedAt, filter: {
+      state: { type: { nin: ["completed","canceled"] } },
+      assignee: { isMe: { eq: true } }
+    }) {
+      nodes {
+        id identifier title description priority dueDate url
+        state { id type }
+        assignee { id }
+        project { id name }
+        attachments { nodes { id title url } }
+        comments(first: 25) { nodes { id body user { id displayName } } }
+      }
+    }
+  }
+}`;
+
+function statusFromType(t){ return t==="completed" ? "done" : t==="started" ? "in progress" : "todo"; }
+function kindFromUrl(url){
+  if(/figma/i.test(url)) return "figma";
+  if(/docs\.google|gdoc/i.test(url)) return "doc";
+  if(/drive\.google/i.test(url)) return "drive";
+  if(/notion/i.test(url)) return "notion";
+  return "link";
+}
+
+async function sync(){
+  if(state.syncing) return;
+  state.syncing = true;
+  if(state.screen !== "home") { state.screen = "loading"; render(); } else render();
+  try {
+    const data = await gql(SYNC_QUERY, { teamId: cfg.teamId });
+    state.meId = data.viewer.id;
+
+    state.people = {};
+    data.team.members.nodes.forEach((m, idx) => {
+      state.people[m.id] = { name: m.displayName, initial: (m.displayName[0]||"?").toUpperCase(), color: AVATAR_COLORS[idx % AVATAR_COLORS.length] };
+    });
+
+    // lowest-position workflow state of each type becomes our target for writes
+    const byType = {};
+    data.team.states.nodes.sort((a,b)=>a.position-b.position).forEach(s => { if(!byType[s.type]) byType[s.type] = s.id; });
+    state.stateIds = {
+      "todo": byType.unstarted || byType.backlog,
+      "in progress": byType.started,
+      "done": byType.completed,
+    };
+
+    state.projects = data.team.projects.nodes.map(p => ({ id: p.id, name: p.name }));
+
+    state.issues = data.team.issues.nodes.map(n => ({
+      id: n.id, identifier: n.identifier,
+      title: n.title, description: n.description || "",
+      status: statusFromType(n.state.type),
+      assignee: n.assignee ? n.assignee.id : "",
+      priority: n.priority === 1 ? "urgent" : n.priority === 2 ? "high" : "none",
+      due: n.dueDate || "",
+      project: n.project ? n.project.name : "", projectId: n.project ? n.project.id : "",
+      url: n.url,
+      attachments: n.attachments.nodes.map(a => ({ kind: kindFromUrl(a.url), name: a.title || a.url, url: a.url })),
+      comments: n.comments.nodes.map(c => ({ who: c.user ? c.user.id : "", text: c.body })),
+      bucket: local.buckets[n.id] || "backlog",   // new arrivals start in the backlog
+      done: false,
+    }));
+
+    state.screen = "home";
+  } catch(e) {
+    toast("sync failed — " + e.message);
+    if(state.screen === "loading") state.screen = "setup";
+  }
+  state.syncing = false;
+  render();
+}
+
+/* ---------------- demo mode ---------------- */
+function isoIn(days){ const d=new Date(); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); }
+function demoIssues(){
+  return {
+    nextNum: 148,
+    issues: [
+      { id:"i1", identifier:"ENG-142", title:"sketch cover concepts",
+        description:"three directions — bold type, photo-led, illustrated. pick one to take forward.",
+        status:"in progress", assignee:"R", priority:"high", due:isoIn(2), project:"creator plan", url:"",
+        attachments:[{kind:"figma",name:"cover explorations",url:"#"}],
+        comments:[{who:"J",text:"love direction 1 — let's go bold"}], bucket:"today", done:false },
+      { id:"i2", identifier:"ENG-143", title:"record voice memo idea",
+        description:"the intro hook idea from this morning, before it disappears.",
+        status:"todo", assignee:"R", priority:"none", due:isoIn(2), project:"creator plan", url:"",
+        attachments:[], comments:[], bucket:"today", done:false },
+      { id:"i3", identifier:"ENG-144", title:"edit the reel",
+        description:"rough cut is in the drive. trim to 30s and add captions.",
+        status:"todo", assignee:"J", priority:"none", due:"", project:"creator plan", url:"",
+        attachments:[], comments:[], bucket:"tomorrow", done:false },
+      { id:"i4", identifier:"ENG-145", title:"write the newsletter", description:"",
+        status:"todo", assignee:"R", priority:"none", due:"", project:"", url:"",
+        attachments:[], comments:[], bucket:"backlog", done:false },
+      { id:"i5", identifier:"ENG-146", title:"learn risograph printing", description:"someday / maybe — no rush.",
+        status:"todo", assignee:"R", priority:"none", due:"", project:"", url:"",
+        attachments:[], comments:[], bucket:"backlog", done:false },
+      { id:"i6", identifier:"ENG-147", title:"redesign the about page", description:"",
+        status:"todo", assignee:"M", priority:"none", due:"", project:"creator plan", url:"",
+        attachments:[], comments:[], bucket:"backlog", done:false },
+    ],
+  };
+}
+let demo = null;
+function startDemo(){
+  demo = loadJSON(DEMO_KEY, null) || demoIssues();
+  state.mode = "demo"; local.mode = "demo"; saveLocal();
+  state.meId = "R";
+  state.people = {
+    R: { name:"rimu", initial:"R", color:"#c0398f" },
+    J: { name:"jai",  initial:"J", color:"#2f8f5b" },
+    M: { name:"mira", initial:"M", color:"#b8791a" },
+  };
+  state.issues = demo.issues;
+  // demo has no real project ids — use the name as its own id
+  state.issues.forEach(i => {
+    if(local.buckets[i.id]) i.bucket = local.buckets[i.id];
+    i.projectId = i.project || "";
+  });
+  buildDemoProjects();
+  state.screen = "home";
+  render();
+}
+// demo projects are just the distinct names in play (id === name)
+function buildDemoProjects(){
+  const names = [...new Set(state.issues.map(i => i.project).filter(Boolean))];
+  state.projects = names.map(n => ({ id: n, name: n }));
+}
+function saveDemo(){
+  if(state.mode !== "demo") return;
+  demo.issues = state.issues.filter(i => !i.done);
+  store.setItem(DEMO_KEY, JSON.stringify(demo, (k,v) => k==="ticking" ? undefined : v));
+}
+
+/* ---------------- boot ---------------- */
+function boot(){
+  if(cfg && cfg.key && cfg.teamId){ state.mode = "linear"; sync(); }
+  else if(local.mode === "demo"){ startDemo(); }
+  else render();
+}
+
+/* ---------------- the pixel cat ----------------------------------
+   x = black pixel, e = eye (pink shows through).
+   Swap this map for rimu's own cat art any time.
+------------------------------------------------------------------- */
+const CAT_MAP = [
+  "..x.......x...x..",
+  "..xx......xx..xx.",
+  "...xx.....xxxxxx.",
+  "...xx....xxxxxxx.",
+  "....xx...xexxxex.",
+  "....xxxxxxxxxxxx.",
+  "...xxxxxxxxxxxxx.",
+  "..xxxxxxxxxxxxx..",
+  ".xxxxxxxxxxxxxx..",
+  ".xxxxxxxxxxxxx...",
+  ".xx..xxxx..xxx...",
+  ".x...xx.....xx...",
+  "......x......xx..",
+];
+function catSVG(px){
+  px = px || 6;
+  const w = CAT_MAP[0].length, h = CAT_MAP.length;
+  let rects = "";
+  CAT_MAP.forEach((row, y) => {
+    [...row].forEach((c, x) => {
+      if(c === "x") rects += `<rect x="${x*px}" y="${y*px}" width="${px}" height="${px}"/>`;
+    });
+  });
+  return `<svg width="${w*px}" height="${h*px}" viewBox="0 0 ${w*px} ${h*px}"
+    xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges" fill="#141114">${rects}</svg>`;
+}
+
+/* ---------------- rendering ---------------- */
+const app = document.getElementById("app");
+const scrim = document.getElementById("scrim");
+const panel = document.getElementById("panel");
+const cheer = document.getElementById("cheer");
+const cheerText = document.getElementById("cheerText");
+const toastEl = document.getElementById("toast");
+
+function esc(s){ return (s||"").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function avatarHTML(key, size){
+  const p = state.people[key]; if(!p) return "";
+  const s = size || 20;
+  return `<span class="avatar" title="${esc(p.name)}" style="width:${s}px;height:${s}px;background:${p.color}">${p.initial}</span>`;
+}
+function fmtDue(iso){
+  if(!iso) return "";
+  const d = new Date(iso+"T00:00:00");
+  return d.toLocaleDateString("en-US",{month:"short",day:"numeric"}).toLowerCase();
+}
+
+let toastTimer = null;
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>toastEl.classList.remove("show"), 3400);
+}
+
+function render(){
+  if(state.screen === "setup") return renderSetup();
+  if(state.screen === "loading") return renderLoading();
+  renderHome();
+  renderPanel();
+}
+
+/* ---------------- FRAME: setup / connect ---------------- */
+function renderSetup(){
+  scrim.classList.remove("open"); panel.classList.remove("open");
+  const step2 = state.setupTeams;
+  app.innerHTML = `
+    <div class="setup">
+      <h1>tracku</h1>
+      <p>your calm little window into Linear</p>
+      <div class="box">
+        ${!step2 ? `
+          <label>your Linear key</label>
+          <input id="keyInput" type="password" placeholder="lin_api_… (paste here)"
+            onkeydown="if(event.key==='Enter')connectKey()" />
+          <div class="keynote">stays on this device — stored in your browser, only ever sent to linear.
+            make one at linear → settings → security &amp; access → personal API keys
+            ${store.memory ? "<br><b>heads up:</b> this browser blocks storage, so you'll need to re-paste the key each visit — for the full experience open localhost:4173 in your normal browser" : ""}</div>
+          <button class="btn btn-primary" style="width:100%" onclick="connectKey()">connect linear →</button>
+          <div class="alt"><button onclick="startDemo()">or play with demo data</button></div>
+        ` : `
+          <label>which team?</label>
+          <select id="teamSelect">
+            ${state.setupTeams.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join("")}
+          </select>
+          <button class="btn btn-primary" style="width:100%" onclick="pickTeam()">let's go →</button>
+        `}
+      </div>
+      ${cfg ? `<p class="hint"><button style="text-decoration:underline" onclick="disconnect()">disconnect linear</button></p>` : ""}
+    </div>`;
+}
+
+async function connectKey(){
+  const key = document.getElementById("keyInput").value.trim();
+  if(!key) return toast("paste your linear key first");
+  try {
+    const data = await gql(`{ viewer { id displayName } teams(first: 50) { nodes { id name } } }`, {}, key);
+    state.setupKey = key;
+    state.setupTeams = data.teams.nodes;
+    if(state.setupTeams.length === 1){ // only one team — no need to ask
+      cfg = { key, teamId: state.setupTeams[0].id, teamName: state.setupTeams[0].name };
+      finishConnect();
+      return;
+    }
+    render();
+  } catch(e) {
+    toast("hmm, linear said no — " + e.message);
+  }
+}
+function pickTeam(){
+  const sel = document.getElementById("teamSelect");
+  cfg = { key: state.setupKey, teamId: sel.value, teamName: sel.options[sel.selectedIndex].text };
+  finishConnect();
+}
+function finishConnect(){
+  store.setItem(CFG_KEY, JSON.stringify(cfg));
+  state.setupTeams = null; state.setupKey = null;
+  state.mode = "linear"; local.mode = "linear"; saveLocal();
+  if(store.memory) toast("connected! but this browser blocks storage — tracku will forget the key when you close it");
+  sync();
+}
+function disconnect(){
+  store.removeItem(CFG_KEY);
+  cfg = null; state.mode = null; local.mode = null; saveLocal();
+  state.setupTeams = null; state.issues = [];
+  render();
+}
+
+/* ---------------- FRAME: loading ---------------- */
+function renderLoading(){
+  scrim.classList.remove("open"); panel.classList.remove("open");
+  app.innerHTML = `
+    <div class="loading">
+      <div class="cat">${catSVG(6)}</div>
+      <p>fetching your cards…</p>
+    </div>`;
+}
+
+/* ---------------- FRAME: home board ---------------- */
+function renderHome(){
+  const today = state.issues.filter(i => i.bucket==="today" && !i.done);
+  const tomorrow = state.issues.filter(i => i.bucket==="tomorrow" && !i.done);
+  const backlog = state.issues.filter(i => i.bucket==="backlog" && !i.done);
+  const me = state.people[state.meId];
+  app.innerHTML = `
+    <div class="topbar">
+      <div class="avatars">${Object.keys(state.people).slice(0,5).map(k=>avatarHTML(k,22)).join("")}</div>
+      <div class="top-actions">
+        ${state.mode==="linear" ? `<button class="settings-link" onclick="sync()">${state.syncing?"syncing…":"↻ sync"}</button>` : ""}
+        <button class="settings-link" onclick="state.screen='setup';render()">setup</button>
+      </div>
+    </div>
+    <div class="greeting">
+      <div class="cat" id="cat">${catSVG(6)}</div>
+      <h1>gm, ${esc(me ? me.name : "you")}<br>r u ready to do?</h1>
+      <div class="tally">✦ ${local.shipped} shipped this week</div>
+    </div>
+    <div class="columns">
+      <div class="col-today">
+        <div class="col-title">today</div>
+        <div class="col-list">
+          ${today.length ? today.map(cardHTML).join("") : emptyHTML()}
+          ${addRowHTML("today")}
+        </div>
+      </div>
+      <div class="col-tomorrow">
+        <div class="col-title">tomorrow</div>
+        <div class="col-list">
+          ${tomorrow.length ? tomorrow.map(cardHTML).join("") : emptyHTML()}
+          ${addRowHTML("tomorrow")}
+        </div>
+      </div>
+    </div>
+
+    <div class="backlog">
+      <div class="backlog-head ${local.backlogOpen?"":"collapsed"}" onclick="local.backlogOpen=!local.backlogOpen;saveLocal();render()">
+        <span class="caret">▾</span> backlog <span class="count">· ${backlog.length}</span>
+      </div>
+      ${local.backlogOpen ? `
+        <div class="backlog-list">
+          ${backlog.map(cardHTML).join("")}
+        </div>
+        <div style="margin-top:12px">${addRowHTML("backlog")}</div>
+      ` : ""}
+    </div>
+
+    <div class="footnote">
+      cards = your linear issues · today / tomorrow / backlog = your local buckets<br>
+      tick → marks done in linear · type → creates a linear issue · outputs attach to the issue
+      ${state.mode==="demo" ? `<br>demo mode · <button onclick="resetDemoData()">reset demo data</button>` : ""}
+    </div>`;
+}
+function resetDemoData(){
+  store.removeItem(DEMO_KEY);
+  local.buckets = {}; local.shipped = 0; saveLocal();
+  startDemo();
+}
+
+function moveButtons(i){
+  const targets = ["today","tomorrow","backlog"].filter(b => b!==i.bucket);
+  const label = { today:"→ today", tomorrow:"→ tomorrow", backlog:"→ backlog" };
+  return `<div class="moves">` + targets.map(t =>
+    `<button class="card-move" onclick="event.stopPropagation();moveBucket('${i.id}','${t}')">${label[t]}</button>`
+  ).join("") + `</div>`;
+}
+
+function cardHTML(i){
+  return `
+    <div class="card b-${i.bucket} ${i.pending?"pending":""}" data-id="${i.id}" onclick="openCard('${i.id}')">
+      <div class="card-top">
+        <button class="tick" aria-label="mark done" onclick="event.stopPropagation();tickDone('${i.id}')">✓</button>
+        <div class="card-title">${esc(i.title)}</div>
+      </div>
+      <div class="card-meta">
+        ${i.priority!=="none" ? `<span class="dot" style="background:${PRIORITY_DOT[i.priority]}"></span>` : ""}
+        ${avatarHTML(i.assignee)}
+        ${i.project ? `<span class="chip">${esc(i.project)}</span>` : ""}
+        ${i.due ? `<span class="chip">${fmtDue(i.due)}</span>` : ""}
+        ${i.attachments.length ? `<span class="paperclip">📎 ${i.attachments.length}</span>` : ""}
+        ${moveButtons(i)}
+      </div>
+    </div>`;
+}
+
+function addRowHTML(bucket){
+  return `
+    <div class="add-row">
+      <span class="add-plus">+</span>
+      <input placeholder="just start typing..." data-bucket="${bucket}"
+        onkeydown="if(event.key==='Enter')addCard('${bucket}',this)" />
+    </div>`;
+}
+function emptyHTML(){
+  return `<div class="empty">nothing here yet — pull something in, or just start typing ↓</div>`;
+}
+
+/* ---------------- interactions ---------------- */
+function tickDone(id){
+  const i = state.issues.find(x=>x.id===id); if(!i || i.done || i.ticking || i.pending) return;
+  i.ticking = true;
+  if(state.selectedId===id){ closePanel(); }
+  // let the tick fill + the card pop before it leaves the board
+  const el = document.querySelector(`.card[data-id="${id}"]`);
+  if(el){
+    el.classList.add("popping");
+    const t = el.querySelector(".tick"); if(t) t.classList.add("ticked");
+  }
+  setTimeout(()=>{
+    i.done = true; i.status = "done";
+    local.shipped++; saveLocal();
+    linWrite(`mutation($id: String!, $stateId: String!) {
+      issueUpdate(id: $id, input: { stateId: $stateId }) { success }
+    }`, { id, stateId: state.stateIds["done"] });
+    render();
+    showCheer();
+  }, el ? 420 : 0);
+}
+function moveBucket(id, bucket){
+  const i = state.issues.find(x=>x.id===id); if(!i) return;
+  i.bucket = bucket;                       // vibe layer only — linear never sees buckets
+  local.buckets[id] = bucket; saveLocal();
+  render();
+}
+function addCard(bucket, el){
+  const val = el.value.trim(); if(!val) return;
+  const tempId = "tmp-" + Date.now();
+  const card = {
+    id: tempId, identifier: "…",
+    title: val, description: "", status: "todo", assignee: state.meId,
+    priority: "none", due: "", project: "", projectId: "", url: "", attachments: [], comments: [],
+    bucket, done: false, pending: state.mode === "linear",
+  };
+  state.issues.push(card);
+  local.buckets[tempId] = bucket; saveLocal();
+  el.value = "";
+  render();
+  const again = document.querySelector(`.add-row input[data-bucket="${bucket}"]`);
+  if(again) again.focus();
+
+  if(state.mode === "linear"){
+    gql(`mutation($input: IssueCreateInput!) {
+      issueCreate(input: $input) { success issue { id identifier url } }
+    }`, { input: { teamId: cfg.teamId, title: val, assigneeId: state.meId } })
+    .then(d => {
+      const iss = d.issueCreate.issue;
+      card.id = iss.id; card.identifier = iss.identifier; card.url = iss.url; card.pending = false;
+      delete local.buckets[tempId]; local.buckets[iss.id] = card.bucket; saveLocal();
+      render();
+    })
+    .catch(e => {
+      state.issues = state.issues.filter(x => x.id !== tempId);
+      delete local.buckets[tempId]; saveLocal();
+      toast("couldn't create it in linear — " + e.message);
+      render();
+    });
+  } else {
+    demo.nextNum++;
+    card.identifier = "ENG-" + demo.nextNum;
+    saveDemo(); render();
+  }
+}
+
+/* ---------------- FRAME: card detail panel ---------------- */
+function openCard(id){ state.selectedId = id; renderPanel(); scrim.classList.add("open"); panel.classList.add("open"); }
+function closePanel(){ state.selectedId = null; scrim.classList.remove("open"); panel.classList.remove("open"); }
+scrim.onclick = closePanel;
+
+function renderPanel(){
+  const i = state.issues.find(x=>x.id===state.selectedId);
+  if(!i){ panel.innerHTML=""; return; }
+  const openLink = i.url
+    ? `<a class="open-linear" href="${esc(i.url)}" target="_blank" rel="noopener">open in linear ↗</a>`
+    : `<a class="open-linear" href="#" onclick="event.preventDefault()">demo card</a>`;
+  panel.innerHTML = `
+    <div class="panel-head">
+      <span class="panel-id">${esc(i.identifier)}</span>
+      <div style="display:flex;gap:12px;align-items:center">
+        ${openLink}
+        <button class="panel-close" onclick="closePanel()">×</button>
+      </div>
+    </div>
+    <div class="panel-title">
+      <button class="tick" aria-label="mark done" onclick="tickDone('${i.id}')">✓</button>
+      <h2>${esc(i.title)}</h2>
+    </div>
+    ${i.description ? `<div class="panel-desc">${esc(i.description)}</div>` : `<div class="panel-desc" style="color:rgba(255,255,255,.4)">no description</div>`}
+
+    <div class="prop">
+      <span class="label">status</span>
+      <select onchange="setStatus('${i.id}',this.value)">
+        ${["todo","in progress","done"].map(s=>`<option ${s===i.status?"selected":""}>${s}</option>`).join("")}
+      </select>
+    </div>
+    <div class="prop">
+      <span class="label">who</span>
+      <select onchange="setAssignee('${i.id}',this.value)">
+        <option value="" ${!i.assignee?"selected":""}>nobody</option>
+        ${Object.keys(state.people).map(k=>`<option value="${esc(k)}" ${k===i.assignee?"selected":""}>${esc(state.people[k].name)}</option>`).join("")}
+      </select>
+    </div>
+    <div class="prop">
+      <span class="label">when</span>
+      <input type="date" value="${i.due}" onchange="setDue('${i.id}',this.value)" />
+    </div>
+    <div class="prop">
+      <span class="label">bucket</span>
+      <select onchange="moveBucket('${i.id}',this.value)">
+        ${["today","tomorrow","backlog"].map(b=>`<option ${b===i.bucket?"selected":""}>${b}</option>`).join("")}
+      </select>
+    </div>
+    ${projectPropHTML(i)}
+
+    <div class="outputs">
+      <h3>outputs</h3>
+      ${i.attachments.map((a)=>`
+        <div class="attach">
+          <span class="kind">${esc(a.kind)}</span>
+          <a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.name)}</a>
+        </div>`).join("") || `<div class="none-yet">no outputs yet</div>`}
+      <div class="attach-add">
+        <input placeholder="paste a figma / doc / drive link…" onkeydown="if(event.key==='Enter')addAttachment('${i.id}',this)" />
+      </div>
+      <div class="attach-note">links attach straight to the linear issue</div>
+    </div>
+
+    <div class="comments">
+      <h3>comments</h3>
+      ${i.comments.map(c=>`<div class="comment">${avatarHTML(c.who)}<span>${esc(c.text)}</span></div>`).join("") || `<div class="none-yet">no comments yet</div>`}
+      <div class="comment-add">
+        <input placeholder="add a comment…" onkeydown="if(event.key==='Enter')addComment('${i.id}',this)" />
+      </div>
+    </div>
+
+    <button class="btn btn-primary panel-done" onclick="tickDone('${i.id}')">mark done ✓</button>`;
+
+  if(state.newProjectFor === i.id){
+    const inp = panel.querySelector(".new-project-input");
+    if(inp) inp.focus();
+  }
+}
+
+/* project field: pick an existing project, clear it, or make a new one */
+function projectPropHTML(i){
+  if(state.newProjectFor === i.id){
+    return `
+    <div class="prop">
+      <span class="label">project</span>
+      <span class="new-project">
+        <input class="new-project-input" placeholder="new project name…"
+          onkeydown="if(event.key==='Enter')createProject('${i.id}',this);else if(event.key==='Escape'){state.newProjectFor=null;renderPanel();}" />
+        <button class="mini-x" onclick="state.newProjectFor=null;renderPanel()">×</button>
+      </span>
+    </div>`;
+  }
+  return `
+    <div class="prop">
+      <span class="label">project</span>
+      <select onchange="onProjectPick('${i.id}',this.value)">
+        <option value="" ${!i.projectId?"selected":""}>none</option>
+        ${state.projects.map(p=>`<option value="${esc(p.id)}" ${p.id===i.projectId?"selected":""}>${esc(p.name)}</option>`).join("")}
+        <option value="__new__">＋ new project…</option>
+      </select>
+    </div>`;
+}
+function onProjectPick(id, val){
+  if(val === "__new__"){ state.newProjectFor = id; renderPanel(); return; }
+  setProject(id, val);
+}
+function setProject(id, projectId){
+  const i = state.issues.find(x=>x.id===id); if(!i) return;
+  const p = state.projects.find(p=>p.id===projectId);
+  i.projectId = projectId || "";
+  i.project = p ? p.name : "";
+  state.newProjectFor = null;
+  linWrite(`mutation($id: String!, $projectId: String) {
+    issueUpdate(id: $id, input: { projectId: $projectId }) { success }
+  }`, { id, projectId: projectId || null });
+  render();
+}
+function createProject(id, el){
+  const name = (el.value||"").trim(); if(!name) return;
+  const i = state.issues.find(x=>x.id===id); if(!i) return;
+  state.newProjectFor = null;
+
+  if(state.mode === "linear"){
+    i.project = name; i.projectId = "pending";   // optimistic
+    render();
+    gql(`mutation($input: ProjectCreateInput!) {
+      projectCreate(input: $input) { success project { id name } }
+    }`, { input: { name, teamIds: [cfg.teamId] } })
+    .then(d => {
+      const p = d.projectCreate.project;
+      state.projects.push({ id: p.id, name: p.name });
+      i.projectId = p.id; i.project = p.name;
+      return gql(`mutation($id: String!, $projectId: String!) {
+        issueUpdate(id: $id, input: { projectId: $projectId }) { success }
+      }`, { id, projectId: p.id });
+    })
+    .then(()=>render())
+    .catch(e => { toast("couldn't create project — " + e.message); i.project=""; i.projectId=""; render(); });
+  } else {
+    // demo: id === name
+    if(!state.projects.some(p=>p.id===name)) state.projects.push({ id: name, name });
+    i.projectId = name; i.project = name;
+    saveDemo(); render();
+  }
+}
+
+function setStatus(id,v){
+  const i=state.issues.find(x=>x.id===id); if(!i) return;
+  if(v==="done") return tickDone(id);
+  i.status=v;
+  linWrite(`mutation($id: String!, $stateId: String!) {
+    issueUpdate(id: $id, input: { stateId: $stateId }) { success }
+  }`, { id, stateId: state.stateIds[v] });
+  render();
+}
+function setAssignee(id,v){
+  const i=state.issues.find(x=>x.id===id); if(!i) return;
+  i.assignee=v;
+  linWrite(`mutation($id: String!, $assigneeId: String) {
+    issueUpdate(id: $id, input: { assigneeId: $assigneeId }) { success }
+  }`, { id, assigneeId: v || null });
+  render();
+}
+function setDue(id,v){
+  const i=state.issues.find(x=>x.id===id); if(!i) return;
+  i.due=v;
+  linWrite(`mutation($id: String!, $dueDate: TimelessDate) {
+    issueUpdate(id: $id, input: { dueDate: $dueDate }) { success }
+  }`, { id, dueDate: v || null });
+  render();
+}
+function addAttachment(id,el){
+  const url=el.value.trim(); if(!url) return;
+  const i=state.issues.find(x=>x.id===id); if(!i) return;
+  const name = url.replace(/^https?:\/\//,"").slice(0,40);
+  i.attachments.push({ kind: kindFromUrl(url), name, url });
+  linWrite(`mutation($input: AttachmentCreateInput!) {
+    attachmentCreate(input: $input) { success }
+  }`, { input: { issueId: id, title: name, url } });
+  el.value=""; renderPanel();
+}
+function addComment(id,el){
+  const val=el.value.trim(); if(!val) return;
+  const i=state.issues.find(x=>x.id===id); if(!i) return;
+  i.comments.push({ who: state.meId, text: val });
+  linWrite(`mutation($input: CommentCreateInput!) {
+    commentCreate(input: $input) { success }
+  }`, { input: { issueId: id, body: val } });
+  el.value=""; renderPanel();
+}
+
+/* ---------------- FRAME: celebration ---------------- */
+function showCheer(){
+  const lines=["✦ nice, shipped it","✦ boom, done","✦ one down","✦ look at you go"];
+  cheerText.textContent = lines[Math.floor(Math.random()*lines.length)];
+  cheer.classList.add("show");
+  setTimeout(()=>cheer.classList.remove("show"), 1100);
+  const cat = document.getElementById("cat");
+  if(cat){ cat.classList.add("jump"); setTimeout(()=>cat.classList.remove("jump"), 650); }
+}
+
+boot();
+</script>
+</body>
+</html>
