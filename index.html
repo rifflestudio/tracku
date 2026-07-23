@@ -184,7 +184,11 @@
   .panel-desc {
     font-size: 14px; color: rgba(255,255,255,.75); background: rgba(255,255,255,.08);
     border-radius: 16px; padding: 13px 15px; margin-bottom: 16px; white-space: pre-wrap;
+    display: block; width: 100%; border: none; outline: none; resize: vertical;
+    min-height: 74px; font-family: inherit; line-height: 1.5;
   }
+  .panel-desc:focus { background: rgba(255,255,255,.12); }
+  .panel-desc::placeholder { color: rgba(255,255,255,.4); }
   .prop { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; font-size: 13px; }
   .prop + .prop { border-top: 1px solid rgba(255,255,255,.1); }
   .prop .label { color: var(--on-dark-muted); font-weight: 600; }
@@ -822,7 +826,8 @@ function renderPanel(){
       <button class="tick" aria-label="mark done" onclick="tickDone('${i.id}')">✓</button>
       <h2>${esc(i.title)}</h2>
     </div>
-    ${i.description ? `<div class="panel-desc">${esc(i.description)}</div>` : `<div class="panel-desc" style="color:rgba(255,255,255,.4)">no description</div>`}
+    <textarea class="panel-desc" placeholder="add a description…"
+      onblur="setDescription('${i.id}',this.value)">${esc(i.description)}</textarea>
 
     <div class="prop">
       <span class="label">status</span>
@@ -945,6 +950,16 @@ function createProject(id, el){
   }
 }
 
+function setDescription(id,v){
+  const i=state.issues.find(x=>x.id===id); if(!i) return;
+  const val = v.trim();
+  if(val === i.description) return;   // nothing changed — no write
+  i.description = val;
+  linWrite(`mutation($id: String!, $description: String) {
+    issueUpdate(id: $id, input: { description: $description }) { success }
+  }`, { id, description: val || null });
+  saveDemo();
+}
 function setStatus(id,v){
   const i=state.issues.find(x=>x.id===id); if(!i) return;
   if(v==="done") return tickDone(id);
