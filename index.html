@@ -12,7 +12,8 @@
   ----------------------------------------------------------------*/
   * { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
-    --pink: #FF50DC;
+    --bg: #FAF6EE;          /* soft eggshell — easy on the eyes */
+    --pink: #FF50DC;        /* the pink lives on as the accent */
     --pink-soft: #ff9aec;
     --ink: #211d20;
     --plum: #7d4b72;
@@ -21,7 +22,7 @@
   }
   body {
     font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-    background: var(--pink);
+    background: var(--bg);
     color: var(--ink);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
@@ -550,10 +551,12 @@ function fmtDue(iso){
 
 let toastTimer = null;
 function toast(msg){
+  const isError = /couldn't|failed|said no/.test(msg);
+  if(isError) console.error("[tracku]", msg);   // so errors are findable after the toast fades
   toastEl.textContent = msg;
   toastEl.classList.add("show");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(()=>toastEl.classList.remove("show"), 3400);
+  toastTimer = setTimeout(()=>toastEl.classList.remove("show"), isError ? 7000 : 3400);
 }
 
 function render(){
