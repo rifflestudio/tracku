@@ -668,7 +668,6 @@ function renderHome(){
     <div class="greeting">
       <div class="cat" id="cat">${catSVG(6)}</div>
       <h1>gm, ${esc(me ? me.name : "you")}<br>r u ready to do?</h1>
-      <div class="tally">✦ ${local.shipped} shipped this week</div>
       <div class="add-project">
         ${state.addingProject ? `
           <input class="add-project-input" placeholder="project name…"
