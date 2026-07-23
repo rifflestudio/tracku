@@ -73,6 +73,15 @@
     letter-spacing: -0.8px; line-height: 1.12;
   }
   .greeting .tally { font-size: 13px; font-weight: 600; color: rgba(0,0,0,.55); margin-top: 12px; }
+  .add-project { margin-top: 8px; height: 30px; display: flex; justify-content: center; align-items: center; }
+  .add-project-link { font-size: 12px; font-weight: 600; color: rgba(0,0,0,.4); padding: 3px 10px; border-radius: 999px; }
+  .add-project-link:hover { color: var(--ink); background: rgba(0,0,0,.06); }
+  .add-project-input {
+    font: inherit; font-size: 13px; font-weight: 500; text-align: center;
+    border: 2px dashed rgba(0,0,0,.35); border-radius: 999px; padding: 4px 14px;
+    background: transparent; outline: none; color: var(--ink); width: 210px;
+  }
+  .add-project-input::placeholder { color: rgba(0,0,0,.4); }
   .cat { display: inline-block; margin-bottom: 14px; animation: bob 3.2s ease-in-out infinite; }
   .cat.jump { animation: jump .6s ease; }
   @keyframes bob { 0%,100%{ transform: translateY(0) } 50%{ transform: translateY(-7px) } }
@@ -660,6 +669,15 @@ function renderHome(){
       <div class="cat" id="cat">${catSVG(6)}</div>
       <h1>gm, ${esc(me ? me.name : "you")}<br>r u ready to do?</h1>
       <div class="tally">✦ ${local.shipped} shipped this week</div>
+      <div class="add-project">
+        ${state.addingProject ? `
+          <input class="add-project-input" placeholder="project name…"
+            onkeydown="if(event.key==='Enter')createProjectHome(this);else if(event.key==='Escape'){state.addingProject=false;render();}"
+            onblur="if(!this.value.trim()){state.addingProject=false;render();}" />
+        ` : `
+          <button class="add-project-link" onclick="state.addingProject=true;render()">＋ add project</button>
+        `}
+      </div>
     </div>
     <div class="columns">
       <div class="col-today">
@@ -695,6 +713,10 @@ function renderHome(){
       tick → marks done in linear · type → creates a linear issue · outputs attach to the issue
       ${state.mode==="demo" ? `<br>demo mode · <button onclick="resetDemoData()">reset demo data</button>` : ""}
     </div>`;
+  if(state.addingProject){
+    const inp = document.querySelector(".add-project-input");
+    if(inp) inp.focus();
+  }
 }
 function resetDemoData(){
   store.removeItem(DEMO_KEY);
@@ -883,6 +905,33 @@ function renderPanel(){
   if(state.newProjectFor === i.id){
     const inp = panel.querySelector(".new-project-input");
     if(inp) inp.focus();
+  }
+}
+
+/* "+ add project" on the home screen — creates a Linear project, unattached to any card */
+function createProjectHome(el){
+  const name = (el.value||"").trim(); if(!name) return;
+  if(state.projects.some(p => p.name.toLowerCase() === name.toLowerCase())){
+    state.addingProject = false; render();
+    return toast(`"${name}" already exists`);
+  }
+  state.addingProject = false;
+  if(state.mode === "linear"){
+    gql(`mutation($input: ProjectCreateInput!) {
+      projectCreate(input: $input) { success project { id name } }
+    }`, { input: { name, teamIds: [cfg.teamId] } })
+    .then(d => {
+      const p = d.projectCreate.project;
+      state.projects.push({ id: p.id, name: p.name });
+      toast(`✦ project "${p.name}" created`);
+      render();
+    })
+    .catch(e => { toast("couldn't create project — " + e.message); render(); });
+    render();
+  } else {
+    state.projects.push({ id: name, name });
+    toast(`✦ project "${name}" created`);
+    saveDemo(); render();
   }
 }
 
