@@ -73,15 +73,27 @@
     letter-spacing: -0.8px; line-height: 1.12;
   }
   .greeting .tally { font-size: 13px; font-weight: 600; color: rgba(0,0,0,.55); margin-top: 12px; }
-  .add-project { margin-top: 8px; height: 30px; display: flex; justify-content: center; align-items: center; }
+  .add-project { margin-top: 8px; min-height: 30px; display: flex; justify-content: center; align-items: center; }
   .add-project-link { font-size: 12px; font-weight: 600; color: rgba(0,0,0,.4); padding: 3px 10px; border-radius: 999px; }
   .add-project-link:hover { color: var(--ink); background: rgba(0,0,0,.06); }
-  .add-project-input {
-    font: inherit; font-size: 13px; font-weight: 500; text-align: center;
-    border: 2px dashed rgba(0,0,0,.35); border-radius: 999px; padding: 4px 14px;
-    background: transparent; outline: none; color: var(--ink); width: 210px;
+  .project-form {
+    margin: 10px auto 0; width: 330px; max-width: 88vw; background: var(--ink);
+    border-radius: 24px; padding: 18px; text-align: left;
+    display: flex; flex-direction: column; gap: 10px;
   }
-  .add-project-input::placeholder { color: rgba(0,0,0,.4); }
+  .project-form input, .project-form textarea, .project-form select {
+    font: inherit; font-size: 13px; font-weight: 500; border: none; outline: none;
+    background: #383237; color: #fff; border-radius: 999px; padding: 8px 14px; width: 100%;
+    color-scheme: dark;
+  }
+  .project-form textarea { border-radius: 16px; min-height: 54px; resize: vertical; line-height: 1.45; }
+  .project-form input::placeholder, .project-form textarea::placeholder { color: rgba(255,255,255,.4); }
+  .pf-row { display: flex; align-items: center; gap: 10px; }
+  .pf-label { font-size: 12px; font-weight: 600; color: var(--on-dark-muted); width: 46px; flex-shrink: 0; }
+  .pf-actions { display: flex; gap: 10px; align-items: center; margin-top: 2px; }
+  .pf-actions .btn { flex: 1; padding: 9px; font-size: 13px; }
+  .pf-cancel { font-size: 12px; font-weight: 600; color: var(--on-dark-muted); }
+  .pf-cancel:hover { color: #fff; }
   .cat { display: inline-block; margin-bottom: 14px; animation: bob 3.2s ease-in-out infinite; }
   .cat.jump { animation: jump .6s ease; }
   @keyframes bob { 0%,100%{ transform: translateY(0) } 50%{ transform: translateY(-7px) } }
@@ -669,11 +681,7 @@ function renderHome(){
       <div class="cat" id="cat">${catSVG(6)}</div>
       <h1>gm, ${esc(me ? me.name : "you")}<br>r u ready to do?</h1>
       <div class="add-project">
-        ${state.addingProject ? `
-          <input class="add-project-input" placeholder="project name…"
-            onkeydown="if(event.key==='Enter')createProjectHome(this);else if(event.key==='Escape'){state.addingProject=false;render();}"
-            onblur="if(!this.value.trim()){state.addingProject=false;render();}" />
-        ` : `
+        ${state.addingProject ? projectFormHTML() : `
           <button class="add-project-link" onclick="state.addingProject=true;render()">＋ add project</button>
         `}
       </div>
@@ -713,7 +721,7 @@ function renderHome(){
       ${state.mode==="demo" ? `<br>demo mode · <button onclick="resetDemoData()">reset demo data</button>` : ""}
     </div>`;
   if(state.addingProject){
-    const inp = document.querySelector(".add-project-input");
+    const inp = document.getElementById("pfName");
     if(inp) inp.focus();
   }
 }
@@ -907,18 +915,45 @@ function renderPanel(){
   }
 }
 
-/* "+ add project" on the home screen — creates a Linear project, unattached to any card */
-function createProjectHome(el){
-  const name = (el.value||"").trim(); if(!name) return;
+/* "+ add project" on the home screen — a small creator with optional metadata */
+function projectFormHTML(){
+  return `
+    <div class="project-form">
+      <input id="pfName" placeholder="project name…"
+        onkeydown="if(event.key==='Enter')submitProjectForm();else if(event.key==='Escape'){state.addingProject=false;render();}" />
+      <textarea id="pfDesc" placeholder="what's it about? (optional)"></textarea>
+      <div class="pf-row"><span class="pf-label">target</span><input type="date" id="pfDate" /></div>
+      <div class="pf-row"><span class="pf-label">lead</span>
+        <select id="pfLead">
+          <option value="">nobody</option>
+          ${Object.keys(state.people).map(k=>`<option value="${esc(k)}" ${k===state.meId?"selected":""}>${esc(state.people[k].name)}</option>`).join("")}
+        </select>
+      </div>
+      <div class="pf-actions">
+        <button class="btn btn-primary" onclick="submitProjectForm()">create ✦</button>
+        <button class="pf-cancel" onclick="state.addingProject=false;render()">cancel</button>
+      </div>
+    </div>`;
+}
+function submitProjectForm(){
+  const name = (document.getElementById("pfName").value||"").trim();
+  if(!name) return toast("give it a name first");
   if(state.projects.some(p => p.name.toLowerCase() === name.toLowerCase())){
-    state.addingProject = false; render();
     return toast(`"${name}" already exists`);
   }
+  const desc = (document.getElementById("pfDesc").value||"").trim();
+  const date = document.getElementById("pfDate").value;
+  const lead = document.getElementById("pfLead").value;
   state.addingProject = false;
+
   if(state.mode === "linear"){
+    const input = { name, teamIds: [cfg.teamId] };
+    if(desc) input.description = desc;
+    if(date) input.targetDate = date;
+    if(lead) input.leadId = lead;
     gql(`mutation($input: ProjectCreateInput!) {
       projectCreate(input: $input) { success project { id name } }
-    }`, { input: { name, teamIds: [cfg.teamId] } })
+    }`, { input })
     .then(d => {
       const p = d.projectCreate.project;
       state.projects.push({ id: p.id, name: p.name });
