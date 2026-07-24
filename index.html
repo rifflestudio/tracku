@@ -269,6 +269,13 @@
   .comment .avatar { width: 20px; height: 20px; flex-shrink: 0; }
   .comment-add { margin-top: 10px; }
   .panel-done { width: 100%; margin-top: 22px; font-size: 15px; padding: 13px; }
+  .status-pick { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+  .status-opt {
+    font-size: 13px; font-weight: 600; border-radius: 999px; padding: 7px 14px;
+    background: #383237; color: #fff; border: 2px solid transparent;
+  }
+  .status-opt:hover { background: var(--pink); color: var(--ink); }
+  .status-opt.current { border-color: var(--pink); }
   .open-linear { font-size: 12px; color: var(--on-dark-muted); text-decoration: underline; }
   .open-linear:hover { color: var(--pink-soft); }
   .none-yet { font-size: 13px; color: rgba(255,255,255,.4); margin-bottom: 10px; }
@@ -402,7 +409,7 @@ const SYNC_QUERY = `query($teamId: String!) {
     }) {
       nodes {
         id identifier title description priority dueDate url
-        state { id type }
+        state { id name type }
         assignee { id }
         project { id name }
         attachments { nodes { id title url } }
@@ -434,9 +441,14 @@ async function sync(){
       state.people[m.id] = { name: m.displayName, initial: (m.displayName[0]||"?").toUpperCase(), color: AVATAR_COLORS[idx % AVATAR_COLORS.length] };
     });
 
-    // lowest-position workflow state of each type becomes our target for writes
+    // the team's full workflow, in board order — powers the status picker
+    state.allStates = data.team.states.nodes
+      .sort((a,b)=>a.position-b.position)
+      .map(s => ({ id: s.id, name: s.name, type: s.type }));
+
+    // lowest-position workflow state of each type becomes our target for quick writes
     const byType = {};
-    data.team.states.nodes.sort((a,b)=>a.position-b.position).forEach(s => { if(!byType[s.type]) byType[s.type] = s.id; });
+    state.allStates.forEach(s => { if(!byType[s.type]) byType[s.type] = s.id; });
     state.stateIds = {
       "todo": byType.unstarted || byType.backlog,
       "in progress": byType.started,
@@ -449,6 +461,7 @@ async function sync(){
       id: n.id, identifier: n.identifier,
       title: n.title, description: n.description || "",
       status: statusFromType(n.state.type),
+      stateId: n.state.id, stateName: n.state.name,
       assignee: n.assignee ? n.assignee.id : "",
       priority: n.priority === 1 ? "urgent" : n.priority === 2 ? "high" : "none",
       due: n.dueDate || "",
@@ -510,11 +523,25 @@ function startDemo(){
     J: { name:"jai",  initial:"J", color:"#2f8f5b" },
     M: { name:"mira", initial:"M", color:"#b8791a" },
   };
+  // a fake linear-ish workflow so the status picker works in demo
+  state.allStates = [
+    { id:"s1", name:"Backlog",     type:"backlog" },
+    { id:"s2", name:"Todo",        type:"unstarted" },
+    { id:"s3", name:"In Progress", type:"started" },
+    { id:"s4", name:"In Review",   type:"started" },
+    { id:"s5", name:"Done",        type:"completed" },
+    { id:"s6", name:"Canceled",    type:"canceled" },
+  ];
+  state.stateIds = { "todo":"s2", "in progress":"s3", "done":"s5" };
   state.issues = demo.issues;
   // demo has no real project ids — use the name as its own id
   state.issues.forEach(i => {
     if(local.buckets[i.id]) i.bucket = local.buckets[i.id];
     i.projectId = i.project || "";
+    if(!i.stateId){
+      i.stateId = i.done ? "s5" : (state.stateIds[i.status] || "s2");
+      i.stateName = (state.allStates.find(s=>s.id===i.stateId)||{}).name || "Todo";
+    }
   });
   buildDemoProjects();
   state.screen = "home";
@@ -746,9 +773,10 @@ function renderShipped(){
 
 /* ---------------- FRAME: home board ---------------- */
 function renderHome(){
-  const today = state.issues.filter(i => i.bucket==="today" && !i.done);
-  const tomorrow = state.issues.filter(i => i.bucket==="tomorrow" && !i.done);
-  const backlog = state.issues.filter(i => i.bucket==="backlog" && !i.done);
+  const alive = state.issues.filter(i => !i.done && !i.canceled);
+  const today = alive.filter(i => i.bucket==="today");
+  const tomorrow = alive.filter(i => i.bucket==="tomorrow");
+  const backlog = alive.filter(i => i.bucket==="backlog");
   const me = state.people[state.meId];
   app.innerHTML = `
     <div class="topbar">
@@ -880,6 +908,7 @@ function tickDone(id){
   const i = state.issues.find(x=>x.id===id); if(!i || i.done || i.ticking || i.pending) return;
   i.ticking = true;
   const prevStatus = i.status, prevBucket = i.bucket;
+  const prevStateId = i.stateId, prevStateName = i.stateName;
   if(state.selectedId===id){ closePanel(); }
   // let the tick fill + the card pop before it leaves the board
   const el = document.querySelector(`.card[data-id="${id}"]`);
@@ -889,6 +918,8 @@ function tickDone(id){
   }
   setTimeout(()=>{
     i.done = true; i.status = "done";
+    i.stateId = state.stateIds["done"];
+    i.stateName = ((state.allStates||[]).find(s=>s.id===i.stateId)||{}).name || "Done";
     i.completedAt = new Date().toISOString();
     local.shipped++; saveLocal();
     linWrite(`mutation($id: String!, $stateId: String!) {
@@ -896,11 +927,12 @@ function tickDone(id){
     }`, { id, stateId: state.stateIds["done"] });
     pushUndo(`"${i.title}" is back`, () => {
       i.done = false; i.ticking = false; i.status = prevStatus; delete i.completedAt;
+      i.stateId = prevStateId; i.stateName = prevStateName;
       i.bucket = prevBucket; local.buckets[i.id] = prevBucket;
       local.shipped = Math.max(0, local.shipped - 1); saveLocal();
       linWrite(`mutation($id: String!, $stateId: String!) {
         issueUpdate(id: $id, input: { stateId: $stateId }) { success }
-      }`, { id: i.id, stateId: state.stateIds[prevStatus] });
+      }`, { id: i.id, stateId: prevStateId || state.stateIds[prevStatus] });
       render();
     });
     render();
@@ -920,7 +952,10 @@ function addCard(bucket, el){
   const tempId = "tmp-" + Date.now();
   const card = {
     id: tempId, identifier: "…",
-    title: val, description: "", status: "todo", assignee: state.meId,
+    title: val, description: "", status: "todo",
+    stateId: state.stateIds["todo"] || "",
+    stateName: ((state.allStates||[]).find(s=>s.id===state.stateIds["todo"])||{}).name || "Todo",
+    assignee: state.meId,
     priority: "none", due: "", project: "", projectId: "", url: "", attachments: [], comments: [],
     bucket, done: false, pending: state.mode === "linear",
   };
@@ -963,8 +998,8 @@ function addCard(bucket, el){
 }
 
 /* ---------------- FRAME: card detail panel ---------------- */
-function openCard(id){ state.selectedId = id; renderPanel(); scrim.classList.add("open"); panel.classList.add("open"); }
-function closePanel(){ state.selectedId = null; scrim.classList.remove("open"); panel.classList.remove("open"); }
+function openCard(id){ state.selectedId = id; state.statusPickerOpen = false; renderPanel(); scrim.classList.add("open"); panel.classList.add("open"); }
+function closePanel(){ state.selectedId = null; state.statusPickerOpen = false; scrim.classList.remove("open"); panel.classList.remove("open"); }
 scrim.onclick = closePanel;
 
 function renderPanel(){
@@ -990,8 +1025,8 @@ function renderPanel(){
 
     <div class="prop">
       <span class="label">status</span>
-      <select onchange="setStatus('${i.id}',this.value)">
-        ${["todo","in progress","done"].map(s=>`<option ${s===i.status?"selected":""}>${s}</option>`).join("")}
+      <select onchange="setState('${i.id}',this.value)">
+        ${(state.allStates||[]).map(s=>`<option value="${esc(s.id)}" ${s.id===i.stateId?"selected":""}>${esc(s.name.toLowerCase())}</option>`).join("")}
       </select>
     </div>
     <div class="prop">
@@ -1034,7 +1069,16 @@ function renderPanel(){
       </div>
     </div>
 
-    <button class="btn btn-primary panel-done" onclick="tickDone('${i.id}')">mark done ✓</button>`;
+    ${state.statusPickerOpen ? `
+      <div class="status-pick">
+        ${(state.allStates||[]).map(s=>`
+          <button class="status-opt ${s.id===i.stateId?"current":""}" onclick="setState('${i.id}','${esc(s.id)}')">
+            ${esc(s.name.toLowerCase())}${s.type==="completed"?" ✓":""}
+          </button>`).join("")}
+      </div>` : ""}
+    <button class="btn btn-primary panel-done" onclick="state.statusPickerOpen=!state.statusPickerOpen;renderPanel()">
+      change da status ${state.statusPickerOpen ? "▴" : "✦"}
+    </button>`;
 
   if(state.newProjectFor === i.id){
     const inp = panel.querySelector(".new-project-input");
@@ -1178,15 +1222,38 @@ function setDescription(id,v,isUndo){
   saveDemo();
   if(isUndo) renderPanel();
 }
-function setStatus(id,v,isUndo){
-  const i=state.issues.find(x=>x.id===id); if(!i || i.status===v) return;
-  if(v==="done") return tickDone(id);
-  const prev = i.status;
-  if(!isUndo) pushUndo(`status on "${i.title}"`, () => setStatus(id, prev, true));
-  i.status=v;
+/* send the issue to any of the team's real workflow states.
+   completed-type → full tick celebration · canceled-type → quietly leaves the board */
+function setState(id, stateId, isUndo){
+  const i = state.issues.find(x=>x.id===id); if(!i || i.stateId === stateId) return;
+  const st = (state.allStates||[]).find(s=>s.id===stateId); if(!st) return;
+  const prev = { stateId: i.stateId, stateName: i.stateName, status: i.status,
+                 done: i.done, canceled: !!i.canceled, completedAt: i.completedAt, shipped: local.shipped };
+  if(!isUndo) pushUndo(`status on "${i.title}"`, () => {
+    i.stateId = prev.stateId; i.stateName = prev.stateName; i.status = prev.status;
+    i.done = prev.done; i.canceled = prev.canceled; i.ticking = false;
+    if(prev.completedAt) i.completedAt = prev.completedAt; else delete i.completedAt;
+    local.shipped = prev.shipped; saveLocal();
+    linWrite(`mutation($id: String!, $stateId: String!) {
+      issueUpdate(id: $id, input: { stateId: $stateId }) { success }
+    }`, { id: i.id, stateId: prev.stateId });
+    render();
+  });
+  i.stateId = st.id; i.stateName = st.name; i.status = statusFromType(st.type);
+  if(st.type === "completed"){
+    if(!i.done){ i.done = true; i.completedAt = new Date().toISOString(); local.shipped++; saveLocal(); showCheer(); }
+    i.canceled = false;
+    if(state.selectedId===id) closePanel();
+  } else if(st.type === "canceled"){
+    i.canceled = true; i.done = false; i.ticking = false; delete i.completedAt;
+    if(state.selectedId===id) closePanel();
+  } else {
+    i.done = false; i.canceled = false; i.ticking = false; delete i.completedAt;
+  }
   linWrite(`mutation($id: String!, $stateId: String!) {
     issueUpdate(id: $id, input: { stateId: $stateId }) { success }
-  }`, { id, stateId: state.stateIds[v] });
+  }`, { id, stateId });
+  state.statusPickerOpen = false;
   render();
 }
 function setAssignee(id,v,isUndo){
