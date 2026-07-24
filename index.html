@@ -182,6 +182,7 @@
     background: rgba(255,255,255,.14); border-radius: 999px; padding: 2px 9px;
   }
   .b-backlog .chip { color: rgba(0,0,0,.6); background: rgba(0,0,0,.08); }
+  .chip-tagged, .b-backlog .chip-tagged { background: var(--pink); color: var(--ink); }
   .paperclip { font-size: 11px; color: var(--on-dark-muted); }
   .b-backlog .paperclip { color: rgba(0,0,0,.45); }
   .moves { display: flex; gap: 2px; margin-left: auto; }
@@ -408,7 +409,10 @@ const SYNC_QUERY = `query {
   projects(first: 100) { nodes { id name } }
   issues(first: 100, orderBy: updatedAt, filter: {
     state: { type: { nin: ["completed","canceled"] } },
-    assignee: { isMe: { eq: true } }
+    or: [
+      { assignee: { isMe: { eq: true } } },
+      { subscribers: { some: { isMe: { eq: true } } } }
+    ]
   }) {
     nodes {
       id identifier title description priority dueDate url
@@ -867,6 +871,7 @@ function cardHTML(i){
       <div class="card-meta">
         ${i.priority!=="none" ? `<span class="dot" style="background:${PRIORITY_DOT[i.priority]}"></span>` : ""}
         ${avatarHTML(i.assignee)}
+        ${i.assignee && i.assignee!==state.meId ? `<span class="chip chip-tagged">tagged</span>` : ""}
         ${i.project ? `<span class="chip">${esc(i.project)}</span>` : ""}
         ${i.due ? `<span class="chip">${fmtDue(i.due)}</span>` : ""}
         ${i.attachments.length ? `<span class="paperclip">📎 ${i.attachments.length}</span>` : ""}
