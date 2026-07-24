@@ -371,7 +371,7 @@ let state = {
   setupKey: null,        // key being validated during setup
   meId: null,
   people: {},            // id -> { name, initial, color }
-  stateIds: {},          // "todo" | "in progress" | "done" -> Linear workflow state id
+  teamStates: {},        // teamId -> { name, all: [states], ids: {todo/in progress/done -> stateId} }
   projects: [],          // [{ id, name }] for the team
   newProjectFor: null,   // issue id currently typing a new project name for
   shippedList: null,     // completed issues fetched for the "you did it" view
@@ -399,29 +399,33 @@ function linWrite(query, variables){
   gql(query, variables).catch(e => { toast("couldn't reach linear — " + e.message); sync(); });
 }
 
-const SYNC_QUERY = `query($teamId: String!) {
+/* everything assigned to me, across EVERY team in the workspace.
+   states are per-team, so each team's workflow comes along too. */
+const SYNC_QUERY = `query {
   viewer { id }
-  team(id: $teamId) {
-    states { nodes { id name type position } }
-    members { nodes { id displayName } }
-    projects(first: 100) { nodes { id name } }
-    issues(first: 100, orderBy: updatedAt, filter: {
-      state: { type: { nin: ["completed","canceled"] } },
-      assignee: { isMe: { eq: true } }
-    }) {
-      nodes {
-        id identifier title description priority dueDate url
-        state { id name type }
-        assignee { id }
-        project { id name }
-        attachments { nodes { id title url } }
-        comments(first: 25) { nodes { id body user { id displayName } } }
-      }
+  users(first: 100) { nodes { id displayName } }
+  teams(first: 50) { nodes { id name states { nodes { id name type position } } } }
+  projects(first: 100) { nodes { id name } }
+  issues(first: 100, orderBy: updatedAt, filter: {
+    state: { type: { nin: ["completed","canceled"] } },
+    assignee: { isMe: { eq: true } }
+  }) {
+    nodes {
+      id identifier title description priority dueDate url
+      team { id }
+      state { id name type }
+      assignee { id }
+      project { id name }
+      attachments { nodes { id title url } }
+      comments(first: 25) { nodes { id body user { id displayName } } }
     }
   }
 }`;
 
 function statusFromType(t){ return t==="completed" ? "done" : t==="started" ? "in progress" : "todo"; }
+// workflow lookups are per-issue now, since every team has its own states
+function statesFor(i){ return (state.teamStates[i.teamId] || { all: [] }).all; }
+function stateIdsFor(i){ return (state.teamStates[i.teamId] || { ids: {} }).ids; }
 function kindFromUrl(url){
   if(/figma/i.test(url)) return "figma";
   if(/docs\.google|gdoc/i.test(url)) return "doc";
@@ -435,32 +439,31 @@ async function sync(){
   state.syncing = true;
   if(state.screen !== "home") { state.screen = "loading"; render(); } else render();
   try {
-    const data = await gql(SYNC_QUERY, { teamId: cfg.teamId });
+    const data = await gql(SYNC_QUERY);
     state.meId = data.viewer.id;
 
     state.people = {};
-    data.team.members.nodes.forEach((m, idx) => {
+    data.users.nodes.forEach((m, idx) => {
       state.people[m.id] = { name: m.displayName, initial: (m.displayName[0]||"?").toUpperCase(), color: AVATAR_COLORS[idx % AVATAR_COLORS.length] };
     });
 
-    // the team's full workflow, in board order — powers the status picker
-    state.allStates = data.team.states.nodes
-      .sort((a,b)=>a.position-b.position)
-      .map(s => ({ id: s.id, name: s.name, type: s.type }));
+    // per-team workflows, in board order — each card's picker uses its own team's states
+    state.teamStates = {};
+    data.teams.nodes.forEach(t => {
+      const all = t.states.nodes.sort((a,b)=>a.position-b.position)
+        .map(s => ({ id: s.id, name: s.name, type: s.type }));
+      const byType = {};
+      all.forEach(s => { if(!byType[s.type]) byType[s.type] = s.id; });
+      state.teamStates[t.id] = {
+        name: t.name, all,
+        ids: { "todo": byType.unstarted || byType.backlog, "in progress": byType.started, "done": byType.completed },
+      };
+    });
 
-    // lowest-position workflow state of each type becomes our target for quick writes
-    const byType = {};
-    state.allStates.forEach(s => { if(!byType[s.type]) byType[s.type] = s.id; });
-    state.stateIds = {
-      "todo": byType.unstarted || byType.backlog,
-      "in progress": byType.started,
-      "done": byType.completed,
-    };
+    state.projects = data.projects.nodes.map(p => ({ id: p.id, name: p.name }));
 
-    state.projects = data.team.projects.nodes.map(p => ({ id: p.id, name: p.name }));
-
-    state.issues = data.team.issues.nodes.map(n => ({
-      id: n.id, identifier: n.identifier,
+    state.issues = data.issues.nodes.map(n => ({
+      id: n.id, identifier: n.identifier, teamId: n.team.id,
       title: n.title, description: n.description || "",
       status: statusFromType(n.state.type),
       stateId: n.state.id, stateName: n.state.name,
@@ -526,23 +529,27 @@ function startDemo(){
     M: { name:"mira", initial:"M", color:"#b8791a" },
   };
   // a fake linear-ish workflow so the status picker works in demo
-  state.allStates = [
-    { id:"s1", name:"Backlog",     type:"backlog" },
-    { id:"s2", name:"Todo",        type:"unstarted" },
-    { id:"s3", name:"In Progress", type:"started" },
-    { id:"s4", name:"In Review",   type:"started" },
-    { id:"s5", name:"Done",        type:"completed" },
-    { id:"s6", name:"Canceled",    type:"canceled" },
-  ];
-  state.stateIds = { "todo":"s2", "in progress":"s3", "done":"s5" };
+  state.teamStates = { demo: {
+    name: "demo",
+    all: [
+      { id:"s1", name:"Backlog",     type:"backlog" },
+      { id:"s2", name:"Todo",        type:"unstarted" },
+      { id:"s3", name:"In Progress", type:"started" },
+      { id:"s4", name:"In Review",   type:"started" },
+      { id:"s5", name:"Done",        type:"completed" },
+      { id:"s6", name:"Canceled",    type:"canceled" },
+    ],
+    ids: { "todo":"s2", "in progress":"s3", "done":"s5" },
+  }};
   state.issues = demo.issues;
   // demo has no real project ids — use the name as its own id
   state.issues.forEach(i => {
     if(local.buckets[i.id]) i.bucket = local.buckets[i.id];
     i.projectId = i.project || "";
+    i.teamId = "demo";
     if(!i.stateId){
-      i.stateId = i.done ? "s5" : (state.stateIds[i.status] || "s2");
-      i.stateName = (state.allStates.find(s=>s.id===i.stateId)||{}).name || "Todo";
+      i.stateId = i.done ? "s5" : (state.teamStates.demo.ids[i.status] || "s2");
+      i.stateName = (state.teamStates.demo.all.find(s=>s.id===i.stateId)||{}).name || "Todo";
     }
   });
   buildDemoProjects();
@@ -657,7 +664,7 @@ function renderSetup(){
           <button class="btn btn-primary" style="width:100%" onclick="connectKey()">connect linear →</button>
           <div class="alt"><button onclick="startDemo()">or play with demo data</button></div>
         ` : `
-          <label>which team?</label>
+          <label>home team? (your cards come from everywhere — new ones get made here)</label>
           <select id="teamSelect">
             ${state.setupTeams.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join("")}
           </select>
@@ -719,15 +726,13 @@ async function openShipped(){
   state.screen = "shipped"; render();
   if(state.mode === "linear" && !state.shippedList){
     try {
-      const d = await gql(`query($teamId: String!) {
-        team(id: $teamId) {
-          issues(first: 50, orderBy: updatedAt, filter: {
-            state: { type: { eq: "completed" } },
-            assignee: { isMe: { eq: true } }
-          }) { nodes { id identifier title completedAt project { name } } }
-        }
-      }`, { teamId: cfg.teamId });
-      state.shippedList = d.team.issues.nodes.map(n => ({
+      const d = await gql(`query {
+        issues(first: 50, orderBy: updatedAt, filter: {
+          state: { type: { eq: "completed" } },
+          assignee: { isMe: { eq: true } }
+        }) { nodes { id identifier title completedAt project { name } } }
+      }`);
+      state.shippedList = d.issues.nodes.map(n => ({
         id: n.id, title: n.title, completedAt: n.completedAt || "",
         project: n.project ? n.project.name : "",
       }));
@@ -921,13 +926,13 @@ function tickDone(id){
   }
   setTimeout(()=>{
     i.done = true; i.status = "done";
-    i.stateId = state.stateIds["done"];
-    i.stateName = ((state.allStates||[]).find(s=>s.id===i.stateId)||{}).name || "Done";
+    i.stateId = stateIdsFor(i)["done"];
+    i.stateName = (statesFor(i).find(s=>s.id===i.stateId)||{}).name || "Done";
     i.completedAt = new Date().toISOString();
     local.shipped++; saveLocal();
     linWrite(`mutation($id: String!, $stateId: String!) {
       issueUpdate(id: $id, input: { stateId: $stateId }) { success }
-    }`, { id, stateId: state.stateIds["done"] });
+    }`, { id, stateId: stateIdsFor(i)["done"] });
     pushUndo(`"${i.title}" is back`, () => {
       i.done = false; i.ticking = false; i.status = prevStatus; delete i.completedAt;
       i.stateId = prevStateId; i.stateName = prevStateName;
@@ -935,7 +940,7 @@ function tickDone(id){
       local.shipped = Math.max(0, local.shipped - 1); saveLocal();
       linWrite(`mutation($id: String!, $stateId: String!) {
         issueUpdate(id: $id, input: { stateId: $stateId }) { success }
-      }`, { id: i.id, stateId: prevStateId || state.stateIds[prevStatus] });
+      }`, { id: i.id, stateId: prevStateId || stateIdsFor(i)[prevStatus] });
       render();
     });
     render();
@@ -956,12 +961,14 @@ function addCard(bucket, el){
   const card = {
     id: tempId, identifier: "…",
     title: val, description: "", status: "todo",
-    stateId: state.stateIds["todo"] || "",
-    stateName: ((state.allStates||[]).find(s=>s.id===state.stateIds["todo"])||{}).name || "Todo",
+    // new cards are born in the home team picked at setup
+    teamId: state.mode === "linear" ? cfg.teamId : "demo",
     assignee: state.meId,
     priority: "none", due: "", project: "", projectId: "", url: "", attachments: [], comments: [],
     bucket, done: false, pending: state.mode === "linear",
   };
+  card.stateId = stateIdsFor(card)["todo"] || "";
+  card.stateName = (statesFor(card).find(s=>s.id===card.stateId)||{}).name || "Todo";
   state.issues.push(card);
   local.buckets[tempId] = bucket; saveLocal();
   pushUndo(`added "${val}"`, () => {
@@ -1030,7 +1037,7 @@ function renderPanel(){
     <div class="prop">
       <span class="label">status</span>
       <select onchange="setState('${i.id}',this.value)">
-        ${(state.allStates||[]).map(s=>`<option value="${esc(s.id)}" ${s.id===i.stateId?"selected":""}>${esc(s.name.toLowerCase())}</option>`).join("")}
+        ${statesFor(i).map(s=>`<option value="${esc(s.id)}" ${s.id===i.stateId?"selected":""}>${esc(s.name.toLowerCase())}</option>`).join("")}
       </select>
     </div>
     <div class="prop">
@@ -1075,7 +1082,7 @@ function renderPanel(){
 
     ${state.statusPickerOpen ? `
       <div class="status-pick">
-        ${(state.allStates||[]).map(s=>`
+        ${statesFor(i).map(s=>`
           <button class="status-opt ${s.id===i.stateId?"current":""}" onclick="setState('${i.id}','${esc(s.id)}')">
             ${esc(s.name.toLowerCase())}${s.type==="completed"?" ✓":""}
           </button>`).join("")}
@@ -1264,7 +1271,7 @@ function setDescription(id,v,isUndo){
    completed-type → full tick celebration · canceled-type → quietly leaves the board */
 function setState(id, stateId, isUndo){
   const i = state.issues.find(x=>x.id===id); if(!i || i.stateId === stateId) return;
-  const st = (state.allStates||[]).find(s=>s.id===stateId); if(!st) return;
+  const st = statesFor(i).find(s=>s.id===stateId); if(!st) return;
   const prev = { stateId: i.stateId, stateName: i.stateName, status: i.status,
                  done: i.done, canceled: !!i.canceled, completedAt: i.completedAt, shipped: local.shipped };
   if(!isUndo) pushUndo(`status on "${i.title}"`, () => {
